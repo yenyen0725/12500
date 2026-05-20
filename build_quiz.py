@@ -212,6 +212,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
 .modal-btn.cancel{background:var(--neutral-light);color:var(--text)}
 .modal-btn.confirm{background:var(--danger);color:#fff}
 
+/* ===== NOTES ===== */
+.notes-section{margin-top:14px;border-top:1px solid var(--border);padding-top:12px}
+.notes-header{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.notes-header .notes-icon{font-size:.95rem}
+.notes-header .notes-lbl{font-size:.8rem;font-weight:700;color:var(--text-sub);letter-spacing:.03em}
+.notes-saved{font-size:.73rem;color:var(--success);margin-left:auto;
+  opacity:0;transition:opacity .4s}
+.notes-saved.show{opacity:1}
+.notes-has{font-size:.73rem;color:var(--primary);margin-left:auto;font-weight:600}
+.notes-textarea{width:100%;min-height:78px;border:1.5px solid var(--border);border-radius:8px;
+  padding:10px 12px;font-size:.875rem;font-family:inherit;color:var(--text);
+  resize:vertical;line-height:1.55;transition:border-color .15s;background:#fafafa}
+.notes-textarea:focus{outline:none;border-color:var(--primary);background:#fff}
+.notes-textarea::placeholder{color:#9ca3af;font-size:.83rem}
+
 /* ===== RESUME BANNER ===== */
 .resume-bar{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
   border-radius:10px;padding:12px 16px;margin-bottom:14px;
@@ -369,6 +384,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
       <div class="analysis-verdict" id="analysisVerdict"></div>
       <div class="analysis-answer" id="analysisAnswer"></div>
     </div>
+    <div class="notes-section">
+      <div class="notes-header">
+        <span class="notes-icon">📝</span>
+        <span class="notes-lbl">我的筆記</span>
+        <span class="notes-saved" id="notesSaved">已儲存</span>
+        <span class="notes-has" id="notesHas" style="display:none">有筆記</span>
+      </div>
+      <textarea class="notes-textarea" id="notesArea"
+        placeholder="記下重點或備忘，下次做到這題時會自動顯示…"></textarea>
+    </div>
   </div>
 
   <div class="quiz-footer">
@@ -427,11 +452,43 @@ let mode='practice', selSubject='all', selSections=new Set();
 let selCount=20, selOrder='random', selMode='practice';
 let wrongBank = JSON.parse(localStorage.getItem('wrongBank')||'[]');
 let totalStats = JSON.parse(localStorage.getItem('totalStats')||'{"total":0,"correct":0}');
+let questionNotes = JSON.parse(localStorage.getItem('questionNotes')||'{}');
+
+function loadNoteForQuestion(qId){
+  const ta=document.getElementById('notesArea');
+  const note=questionNotes[qId]||'';
+  ta.value=note;
+  document.getElementById('notesHas').style.display=note?'':'none';
+  document.getElementById('notesSaved').classList.remove('show');
+}
+
+function saveNoteForQuestion(qId){
+  const ta=document.getElementById('notesArea');
+  const val=ta.value;
+  if(val.trim()){ questionNotes[qId]=val; }
+  else { delete questionNotes[qId]; }
+  localStorage.setItem('questionNotes',JSON.stringify(questionNotes));
+  const saved=document.getElementById('notesSaved');
+  const has=document.getElementById('notesHas');
+  has.style.display=val.trim()?'':'none';
+  saved.classList.add('show');
+  clearTimeout(window._notesFadeTimer);
+  window._notesFadeTimer=setTimeout(()=>saved.classList.remove('show'),1600);
+}
 
 function initHome(){
   updateSectionList();
   updateStats();
   checkSavedSession();
+
+  // Notes textarea — debounced auto-save
+  document.getElementById('notesArea').addEventListener('input',()=>{
+    clearTimeout(window._notesDebounce);
+    window._notesDebounce=setTimeout(()=>{
+      const q=quizQuestions[currentIdx];
+      if(q) saveNoteForQuestion(q.id);
+    }, 600);
+  });
 
   document.getElementById('subjectFilter').addEventListener('click',e=>{
     const btn=e.target.closest('.filter-btn');
@@ -575,6 +632,7 @@ function renderQuestion(){
   selectedAnswers=[]; answered=false;
   document.getElementById('analysisBox').className='analysis-box';
   document.getElementById('confirmBtn').disabled=true;
+  loadNoteForQuestion(q.id);
   document.getElementById('confirmBtn').style.display='';
   document.getElementById('nextBtn').style.display='none';
   document.getElementById('skipBtn').style.display='';
@@ -845,7 +903,7 @@ function exportProgress(){
   const data={
     version:1,
     exportDate:new Date().toLocaleDateString('zh-TW'),
-    wrongBank, totalStats,
+    wrongBank, totalStats, questionNotes,
     savedSession:JSON.parse(localStorage.getItem('savedSession')||'null')
   };
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
@@ -875,6 +933,10 @@ function importProgress(){
         totalStats=data.totalStats;
         localStorage.setItem('wrongBank',JSON.stringify(wrongBank));
         localStorage.setItem('totalStats',JSON.stringify(totalStats));
+        if(data.questionNotes && typeof data.questionNotes==='object'){
+          questionNotes=data.questionNotes;
+          localStorage.setItem('questionNotes',JSON.stringify(questionNotes));
+        }
         if(data.savedSession)
           localStorage.setItem('savedSession',JSON.stringify(data.savedSession));
         else
@@ -882,7 +944,9 @@ function importProgress(){
         updateStats();
         checkSavedSession();
         const hasSession=!!data.savedSession;
+        const noteCount=Object.keys(data.questionNotes||{}).length;
         alert('✅ 匯入成功！\n累計作答：'+totalStats.total+' 題\n錯題庫：'+wrongBank.length+' 題'
+          +(noteCount?'\n筆記：'+noteCount+' 題':'')
           +(hasSession?'\n\n📖 上次未完成的測驗已恢復，請點「繼續作答」。':''));
       }catch(err){
         alert('❌ 讀取失敗，請確認選擇的是正確的進度備份檔案。');
