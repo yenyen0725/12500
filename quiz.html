@@ -385,14 +385,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
 
   <div class="card">
     <h3>🤖 AI 即時解析設定</h3>
-    <div style="font-size:.82rem;color:var(--text-sub);margin-bottom:4px">
-      答錯時可一鍵查詢 AI 解題原因。使用 Gemini（免費）—
-      <a href="https://aistudio.google.com/app/apikey" target="_blank"
-        style="color:var(--primary)">免費申請 API Key</a>
+    <div style="font-size:.82rem;color:var(--text-sub);margin-bottom:10px">
+      答錯時一鍵查詢 AI 解題原因。推薦使用 Groq（免費・台灣可用・每天 14,400 次）
+    </div>
+    <div style="font-size:.8rem;font-weight:600;color:var(--text-sub);margin-bottom:4px">
+      ① Groq API Key
+      <a href="https://console.groq.com/keys" target="_blank"
+        style="color:#6366f1;font-weight:400;margin-left:6px">免費申請 →</a>
     </div>
     <div class="api-key-row">
-      <input class="api-key-input" id="apiKeyInput" type="password"
-        placeholder="AIza…（貼上你的 Gemini API Key）">
+      <input class="api-key-input" id="groqKeyInput" type="password"
+        placeholder="gsk_…（Groq API Key，免費・推薦）">
+      <button class="api-key-save-btn" onclick="saveApiKey()">儲存</button>
+    </div>
+    <div style="font-size:.8rem;font-weight:600;color:var(--text-sub);margin:10px 0 4px">
+      ② Gemini API Key（備用，台灣可能有限制）
+      <a href="https://aistudio.google.com/app/apikey" target="_blank"
+        style="color:var(--primary);font-weight:400;margin-left:6px">免費申請 →</a>
+    </div>
+    <div class="api-key-row">
+      <input class="api-key-input" id="geminiKeyInput" type="password"
+        placeholder="AIza…（Gemini API Key，備用）">
       <button class="api-key-save-btn" onclick="saveApiKey()">儲存</button>
     </div>
     <div class="api-key-status" id="apiKeyStatus"></div>
@@ -500,6 +513,7 @@ let totalStats = JSON.parse(localStorage.getItem('totalStats')||'{"total":0,"cor
 let questionNotes = JSON.parse(localStorage.getItem('questionNotes')||'{}');
 let aiExplanations = JSON.parse(localStorage.getItem('aiExplanations')||'{}');
 let geminiApiKey = localStorage.getItem('geminiApiKey')||'';
+let groqApiKey = localStorage.getItem('groqApiKey')||'';
 
 function loadNoteForQuestion(qId){
   const ta=document.getElementById('notesArea');
@@ -895,29 +909,31 @@ function confirmExit(){
 
 // ===== API KEY =====
 function saveApiKey(){
-  const val=document.getElementById('apiKeyInput').value.trim();
-  geminiApiKey=val;
-  if(val){
-    localStorage.setItem('geminiApiKey',val);
-    document.getElementById('apiKeyStatus').className='api-key-status ok';
-    document.getElementById('apiKeyStatus').textContent='✅ 已儲存，答錯時可點「查詢 AI 解析原因」';
+  const g=document.getElementById('groqKeyInput').value.trim();
+  const m=document.getElementById('geminiKeyInput').value.trim();
+  groqApiKey=g; geminiApiKey=m;
+  if(g){ localStorage.setItem('groqApiKey',g); } else { localStorage.removeItem('groqApiKey'); }
+  if(m){ localStorage.setItem('geminiApiKey',m); } else { localStorage.removeItem('geminiApiKey'); }
+  const status=document.getElementById('apiKeyStatus');
+  if(g||m){
+    status.className='api-key-status ok';
+    status.textContent='✅ 已儲存'+(g?' · Groq 優先':'')+(m?' · Gemini 備用':'')+'，答錯時可點「查詢 AI 解析原因」';
   } else {
-    localStorage.removeItem('geminiApiKey');
-    document.getElementById('apiKeyStatus').className='api-key-status empty';
-    document.getElementById('apiKeyStatus').textContent='（未設定，填入後才能使用 AI 解析）';
+    status.className='api-key-status empty';
+    status.textContent='（尚未設定，建議填入 Groq API Key）';
   }
 }
 
 function initApiKeyUI(){
-  const input=document.getElementById('apiKeyInput');
   const status=document.getElementById('apiKeyStatus');
-  if(geminiApiKey){
-    input.value=geminiApiKey;
+  if(groqApiKey) document.getElementById('groqKeyInput').value=groqApiKey;
+  if(geminiApiKey) document.getElementById('geminiKeyInput').value=geminiApiKey;
+  if(groqApiKey||geminiApiKey){
     status.className='api-key-status ok';
-    status.textContent='✅ 已設定，答錯時可使用 AI 解析';
+    status.textContent='✅ 已設定'+(groqApiKey?' · Groq 優先':'')+(geminiApiKey?' · Gemini 備用':'');
   } else {
     status.className='api-key-status empty';
-    status.textContent='（未設定，填入後可使用 AI 解析功能）';
+    status.textContent='（尚未設定，建議填入 Groq API Key）';
   }
 }
 
@@ -938,14 +954,6 @@ function showAIButton(q){
   }
 }
 
-// 依序嘗試的模型（額度由寬鬆到嚴格）
-const GEMINI_MODELS=[
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash-8b',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash'
-];
-
 function startAICountdown(seconds){
   const btn=document.getElementById('aiExplainBtn');
   clearInterval(window._aiCountdown);
@@ -964,48 +972,63 @@ function startAICountdown(seconds){
   },1000);
 }
 
-async function tryGemini(prompt,modelIdx){
-  modelIdx=modelIdx||0;
-  if(modelIdx>=GEMINI_MODELS.length){
-    const e=new Error('所有模型均達用量上限，請稍後再試。');
-    e.retryAfter=60; throw e;
-  }
-  const model=GEMINI_MODELS[modelIdx];
-  const resp=await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+geminiApiKey,
-    {method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({
-       contents:[{parts:[{text:prompt}]}],
-       generationConfig:{temperature:0.2,maxOutputTokens:400}
-     })}
-  );
+async function callGroq(prompt){
+  const resp=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+groqApiKey},
+    body:JSON.stringify({
+      model:'llama-3.1-8b-instant',
+      messages:[{role:'user',content:prompt}],
+      temperature:0.2, max_tokens:400
+    })
+  });
   if(!resp.ok){
-    const errData=await resp.json();
-    const msg=errData?.error?.message||'';
+    const err=await resp.json();
+    const msg=err?.error?.message||'HTTP '+resp.status;
     const status=resp.status;
-    if(status===429||msg.includes('quota')||msg.includes('limit')||msg.includes('RESOURCE_EXHAUSTED')){
-      // 嘗試下一個模型
-      try{ return await tryGemini(prompt,modelIdx+1); }
-      catch(e2){
-        if(!e2.retryAfter){
-          const m=msg.match(/retry in ([\d.]+)s/i);
-          e2.retryAfter=m?parseFloat(m[1]):60;
-        }
-        throw e2;
-      }
+    if(status===429||msg.includes('rate')||msg.includes('limit')){
+      const retryMatch=msg.match(/try again in ([\d.]+)s/i)||msg.match(/retry.+?([\d.]+)s/i);
+      const e=new Error(msg); e.retryAfter=retryMatch?parseFloat(retryMatch[1]):30; throw e;
+    }
+    throw new Error(msg);
+  }
+  const data=await resp.json();
+  return data?.choices?.[0]?.message?.content||'（無法取得解析內容）';
+}
+
+async function callGemini(prompt){
+  const models=['gemini-2.0-flash-lite','gemini-1.5-flash-8b','gemini-2.0-flash'];
+  for(let i=0;i<models.length;i++){
+    const resp=await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/'+models[i]+':generateContent?key='+geminiApiKey,
+      {method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({contents:[{parts:[{text:prompt}]}],
+         generationConfig:{temperature:0.2,maxOutputTokens:400}})}
+    );
+    if(resp.ok){
+      const data=await resp.json();
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text||'（無法取得解析內容）';
+    }
+    const err=await resp.json();
+    const msg=err?.error?.message||'';
+    const status=resp.status;
+    const isQuota=status===429||msg.includes('quota')||msg.includes('RESOURCE_EXHAUSTED')||msg.includes('limit: 0');
+    if(isQuota&&i<models.length-1) continue; // 嘗試下一個模型
+    if(isQuota){
+      const retryMatch=msg.match(/retry in ([\d.]+)s/i);
+      const e=new Error('Gemini 台灣地區免費額度不可用，建議改用 Groq API Key。');
+      e.retryAfter=retryMatch?parseFloat(retryMatch[1]):0; throw e;
     }
     throw new Error(msg||'HTTP '+status);
   }
-  const data=await resp.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text||'（無法取得解析內容）';
 }
 
 async function askAI(){
   const q=quizQuestions[currentIdx];
   if(!q) return;
   if(aiExplanations[q.id]){ showAIButton(q); return; }
-  if(!geminiApiKey){
-    alert('請先在首頁「🤖 AI 即時解析設定」填入 Gemini API Key。\n\n免費申請：https://aistudio.google.com/app/apikey');
+  if(!groqApiKey&&!geminiApiKey){
+    alert('請先在首頁「🤖 AI 即時解析設定」填入 API Key。\n\n推薦免費申請 Groq Key：\nhttps://console.groq.com/keys');
     return;
   }
   const btn=document.getElementById('aiExplainBtn');
@@ -1027,20 +1050,20 @@ ${optsText}
 解釋為何選 ${q.answer.map(a=>alphas[a-1]).join('、')} 正確：`;
 
   try{
-    const text=await tryGemini(prompt);
+    // 優先使用 Groq，沒有 Groq key 才用 Gemini
+    const text = groqApiKey ? await callGroq(prompt) : await callGemini(prompt);
     aiExplanations[q.id]=text;
     localStorage.setItem('aiExplanations',JSON.stringify(aiExplanations));
     document.getElementById('aiResultText').textContent=text;
     document.getElementById('aiResult').classList.add('show');
     btn.style.display='none';
   }catch(err){
-    if(err.retryAfter){
+    if(err.retryAfter&&err.retryAfter>0){
       startAICountdown(err.retryAfter);
     } else {
       btn.disabled=false;
       btn.innerHTML='🤖 查詢 AI 解析原因';
-      document.getElementById('aiResultText').textContent=
-        '⚠️ 查詢失敗：'+(err.message||'未知錯誤')+'\n\n請確認 API Key 是否正確。';
+      document.getElementById('aiResultText').textContent='⚠️ '+(err.message||'查詢失敗，請稍後再試。');
       document.getElementById('aiResult').classList.add('show');
     }
   }
@@ -1147,6 +1170,7 @@ function importProgress(){
           aiExplanations=data.aiExplanations;
           localStorage.setItem('aiExplanations',JSON.stringify(aiExplanations));
         }
+        // Note: API keys are NOT exported for security reasons
         if(data.savedSession)
           localStorage.setItem('savedSession',JSON.stringify(data.savedSession));
         else
