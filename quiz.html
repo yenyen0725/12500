@@ -204,6 +204,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
 .modal-btn.cancel{background:var(--neutral-light);color:var(--text)}
 .modal-btn.confirm{background:var(--danger);color:#fff}
 
+/* ===== AI EXPLAIN ===== */
+.ai-explain-btn{margin-top:10px;width:100%;padding:9px 14px;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;
+  border:none;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:600;
+  font-family:inherit;display:flex;align-items:center;justify-content:center;gap:7px;
+  transition:opacity .15s}
+.ai-explain-btn:hover{opacity:.87}
+.ai-explain-btn:disabled{opacity:.5;cursor:not-allowed}
+.ai-result{margin-top:10px;background:linear-gradient(135deg,#f5f3ff,#ede9fe);
+  border:1px solid #c4b5fd;border-radius:8px;padding:12px 14px;display:none}
+.ai-result.show{display:block}
+.ai-result .ai-label{font-size:.73rem;font-weight:700;color:#7c3aed;
+  letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.ai-result .ai-text{font-size:.85rem;line-height:1.7;color:#1f2937;white-space:pre-wrap}
+.ai-loading{display:inline-block;width:13px;height:13px;
+  border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* API key card on home */
+.api-key-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.api-key-input{flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:.83rem;font-family:inherit;color:var(--text);background:#fafafa}
+.api-key-input:focus{outline:none;border-color:#8b5cf6;background:#fff}
+.api-key-save-btn{padding:8px 13px;background:#6366f1;color:#fff;border:none;
+  border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;
+  white-space:nowrap;transition:background .15s}
+.api-key-save-btn:hover{background:#4f46e5}
+.api-key-status{font-size:.75rem;margin-top:5px}
+.api-key-status.ok{color:var(--success)}
+.api-key-status.empty{color:var(--text-sub)}
+
 /* ===== NOTES ===== */
 .notes-section{margin-top:14px;border-top:1px solid var(--border);padding-top:12px}
 .notes-header{display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -352,6 +383,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
     </div>
   </div>
 
+  <div class="card">
+    <h3>🤖 AI 即時解析設定</h3>
+    <div style="font-size:.82rem;color:var(--text-sub);margin-bottom:4px">
+      答錯時可一鍵查詢 AI 解題原因。使用 Gemini（免費）—
+      <a href="https://aistudio.google.com/app/apikey" target="_blank"
+        style="color:var(--primary)">免費申請 API Key</a>
+    </div>
+    <div class="api-key-row">
+      <input class="api-key-input" id="apiKeyInput" type="password"
+        placeholder="AIza…（貼上你的 Gemini API Key）">
+      <button class="api-key-save-btn" onclick="saveApiKey()">儲存</button>
+    </div>
+    <div class="api-key-status" id="apiKeyStatus"></div>
+  </div>
+
   <button class="start-btn" onclick="startQuiz()">▶ 開始測驗</button>
 </div>
 </div>
@@ -375,6 +421,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
     <div class="analysis-box" id="analysisBox">
       <div class="analysis-verdict" id="analysisVerdict"></div>
       <div class="analysis-answer" id="analysisAnswer"></div>
+      <button class="ai-explain-btn" id="aiExplainBtn" onclick="askAI()" style="display:none">
+        🤖 查詢 AI 解析原因
+      </button>
+      <div class="ai-result" id="aiResult">
+        <div class="ai-label">🤖 AI 解析</div>
+        <div class="ai-text" id="aiResultText"></div>
+      </div>
     </div>
     <div class="notes-section">
       <div class="notes-header">
@@ -445,6 +498,8 @@ let selCount=20, selOrder='random', selMode='practice';
 let wrongBank = JSON.parse(localStorage.getItem('wrongBank')||'[]');
 let totalStats = JSON.parse(localStorage.getItem('totalStats')||'{"total":0,"correct":0}');
 let questionNotes = JSON.parse(localStorage.getItem('questionNotes')||'{}');
+let aiExplanations = JSON.parse(localStorage.getItem('aiExplanations')||'{}');
+let geminiApiKey = localStorage.getItem('geminiApiKey')||'';
 
 function loadNoteForQuestion(qId){
   const ta=document.getElementById('notesArea');
@@ -472,6 +527,7 @@ function initHome(){
   updateSectionList();
   updateStats();
   checkSavedSession();
+  initApiKeyUI();
 
   // Notes textarea — debounced auto-save
   document.getElementById('notesArea').addEventListener('input',()=>{
@@ -624,6 +680,8 @@ function renderQuestion(){
   selectedAnswers=[]; answered=false;
   document.getElementById('analysisBox').className='analysis-box';
   document.getElementById('confirmBtn').disabled=true;
+  document.getElementById('aiExplainBtn').style.display='none';
+  document.getElementById('aiResult').classList.remove('show');
   loadNoteForQuestion(q.id);
   document.getElementById('confirmBtn').style.display='';
   document.getElementById('nextBtn').style.display='none';
@@ -669,6 +727,8 @@ function confirmAnswer(){
 
   revealOptions(q,correct);
   if(mode==='practice') showAnalysis(q,correct,'answer');
+
+  if(!correct) showAIButton(q);
 
   document.getElementById('confirmBtn').style.display='none';
   document.getElementById('skipBtn').style.display='none';
@@ -758,6 +818,7 @@ function skipQuestion(){
     <div class="label">正確答案</div>
     <div class="ans-rows">${rows}</div>`;
 
+  showAIButton(q2);
   revealOptions(q2, false);
 }
 
@@ -832,6 +893,105 @@ function confirmExit(){
   goHome();
 }
 
+// ===== API KEY =====
+function saveApiKey(){
+  const val=document.getElementById('apiKeyInput').value.trim();
+  geminiApiKey=val;
+  if(val){
+    localStorage.setItem('geminiApiKey',val);
+    document.getElementById('apiKeyStatus').className='api-key-status ok';
+    document.getElementById('apiKeyStatus').textContent='✅ 已儲存，答錯時可點「查詢 AI 解析原因」';
+  } else {
+    localStorage.removeItem('geminiApiKey');
+    document.getElementById('apiKeyStatus').className='api-key-status empty';
+    document.getElementById('apiKeyStatus').textContent='（未設定，填入後才能使用 AI 解析）';
+  }
+}
+
+function initApiKeyUI(){
+  const input=document.getElementById('apiKeyInput');
+  const status=document.getElementById('apiKeyStatus');
+  if(geminiApiKey){
+    input.value=geminiApiKey;
+    status.className='api-key-status ok';
+    status.textContent='✅ 已設定，答錯時可使用 AI 解析';
+  } else {
+    status.className='api-key-status empty';
+    status.textContent='（未設定，填入後可使用 AI 解析功能）';
+  }
+}
+
+// ===== AI EXPLAIN =====
+function showAIButton(q){
+  const btn=document.getElementById('aiExplainBtn');
+  const result=document.getElementById('aiResult');
+  result.classList.remove('show');
+  // If already cached, show immediately
+  if(aiExplanations[q.id]){
+    document.getElementById('aiResultText').textContent=aiExplanations[q.id];
+    result.classList.add('show');
+    btn.style.display='none';
+  } else {
+    btn.disabled=false;
+    btn.innerHTML='🤖 查詢 AI 解析原因';
+    btn.style.display='';
+  }
+}
+
+async function askAI(){
+  const q=quizQuestions[currentIdx];
+  if(!q) return;
+  if(aiExplanations[q.id]){ showAIButton(q); return; }
+  if(!geminiApiKey){
+    alert('請先在首頁「🤖 AI 即時解析設定」填入 Gemini API Key。\n\n免費申請：https://aistudio.google.com/app/apikey');
+    return;
+  }
+  const btn=document.getElementById('aiExplainBtn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="ai-loading"></span> 查詢中…';
+
+  const alphas=['A','B','C','D'];
+  const correctLabels=q.answer.map(a=>alphas[a-1]+'. '+(q.options[a-1]||'圖示選項')).join('、');
+  const optsText=q.options.map((o,i)=>alphas[i]+'. '+(o||'（圖示選項）')).join('\n');
+
+  const prompt=`你是台灣技術士技能檢定「12500 建築物室內設計乙級」解題助理。
+請用繁體中文，用 2 至 4 句話說明此題正確答案的原因，引用相關法規或標準（如有）。直接解釋，勿重複題目。
+
+科目：${q.subject}（${q.section}）
+題目：${q.question}
+選項：
+${optsText}
+正確答案：${correctLabels}
+
+解釋為何選 ${q.answer.map(a=>alphas[a-1]).join('、')} 正確：`;
+
+  try{
+    const resp=await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+geminiApiKey,
+      {method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({
+         contents:[{parts:[{text:prompt}]}],
+         generationConfig:{temperature:0.2,maxOutputTokens:400}
+       })}
+    );
+    if(!resp.ok){
+      const err=await resp.json();
+      throw new Error(err?.error?.message||'HTTP '+resp.status);
+    }
+    const data=await resp.json();
+    const text=data?.candidates?.[0]?.content?.parts?.[0]?.text||'（無法取得解析內容）';
+    aiExplanations[q.id]=text;
+    localStorage.setItem('aiExplanations',JSON.stringify(aiExplanations));
+    document.getElementById('aiResultText').textContent=text;
+    document.getElementById('aiResult').classList.add('show');
+    btn.style.display='none';
+  }catch(err){
+    btn.disabled=false;
+    btn.innerHTML='🤖 查詢 AI 解析原因';
+    alert('查詢失敗：'+err.message+'\n\n請確認 API Key 是否正確，或稍後再試。');
+  }
+}
+
 // ===== SESSION SAVE / RESTORE =====
 function saveSession(){
   if(!quizQuestions.length) return;
@@ -895,7 +1055,7 @@ function exportProgress(){
   const data={
     version:1,
     exportDate:new Date().toLocaleDateString('zh-TW'),
-    wrongBank, totalStats, questionNotes,
+    wrongBank, totalStats, questionNotes, aiExplanations,
     savedSession:JSON.parse(localStorage.getItem('savedSession')||'null')
   };
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
@@ -929,6 +1089,10 @@ function importProgress(){
           questionNotes=data.questionNotes;
           localStorage.setItem('questionNotes',JSON.stringify(questionNotes));
         }
+        if(data.aiExplanations && typeof data.aiExplanations==='object'){
+          aiExplanations=data.aiExplanations;
+          localStorage.setItem('aiExplanations',JSON.stringify(aiExplanations));
+        }
         if(data.savedSession)
           localStorage.setItem('savedSession',JSON.stringify(data.savedSession));
         else
@@ -937,8 +1101,10 @@ function importProgress(){
         checkSavedSession();
         const hasSession=!!data.savedSession;
         const noteCount=Object.keys(data.questionNotes||{}).length;
+        const aiCount=Object.keys(data.aiExplanations||{}).length;
         alert('✅ 匯入成功！\n累計作答：'+totalStats.total+' 題\n錯題庫：'+wrongBank.length+' 題'
           +(noteCount?'\n筆記：'+noteCount+' 題':'')
+          +(aiCount?'\nAI 解析快取：'+aiCount+' 題':'')
           +(hasSession?'\n\n📖 上次未完成的測驗已恢復，請點「繼續作答」。':''));
       }catch(err){
         alert('❌ 讀取失敗，請確認選擇的是正確的進度備份檔案。');
