@@ -946,6 +946,68 @@ function showAIButton(q){
   }
 }
 
+// 依序嘗試的模型（額度由寬鬆到嚴格）
+const GEMINI_MODELS=[
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash-8b',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash'
+];
+
+function startAICountdown(seconds){
+  const btn=document.getElementById('aiExplainBtn');
+  clearInterval(window._aiCountdown);
+  let remaining=Math.ceil(seconds);
+  btn.disabled=true;
+  btn.innerHTML='⏳ 請求頻繁，'+remaining+' 秒後可重試';
+  window._aiCountdown=setInterval(()=>{
+    remaining--;
+    if(remaining<=0){
+      clearInterval(window._aiCountdown);
+      btn.disabled=false;
+      btn.innerHTML='🤖 查詢 AI 解析原因';
+    } else {
+      btn.innerHTML='⏳ 請求頻繁，'+remaining+' 秒後可重試';
+    }
+  },1000);
+}
+
+async function tryGemini(prompt,modelIdx){
+  modelIdx=modelIdx||0;
+  if(modelIdx>=GEMINI_MODELS.length){
+    const e=new Error('所有模型均達用量上限，請稍後再試。');
+    e.retryAfter=60; throw e;
+  }
+  const model=GEMINI_MODELS[modelIdx];
+  const resp=await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+geminiApiKey,
+    {method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({
+       contents:[{parts:[{text:prompt}]}],
+       generationConfig:{temperature:0.2,maxOutputTokens:400}
+     })}
+  );
+  if(!resp.ok){
+    const errData=await resp.json();
+    const msg=errData?.error?.message||'';
+    const status=resp.status;
+    if(status===429||msg.includes('quota')||msg.includes('limit')||msg.includes('RESOURCE_EXHAUSTED')){
+      // 嘗試下一個模型
+      try{ return await tryGemini(prompt,modelIdx+1); }
+      catch(e2){
+        if(!e2.retryAfter){
+          const m=msg.match(/retry in ([\d.]+)s/i);
+          e2.retryAfter=m?parseFloat(m[1]):60;
+        }
+        throw e2;
+      }
+    }
+    throw new Error(msg||'HTTP '+status);
+  }
+  const data=await resp.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text||'（無法取得解析內容）';
+}
+
 async function askAI(){
   const q=quizQuestions[currentIdx];
   if(!q) return;
@@ -961,9 +1023,8 @@ async function askAI(){
   const alphas=['A','B','C','D'];
   const correctLabels=q.answer.map(a=>alphas[a-1]+'. '+(q.options[a-1]||'圖示選項')).join('、');
   const optsText=q.options.map((o,i)=>alphas[i]+'. '+(o||'（圖示選項）')).join('\n');
-
   const prompt=`你是台灣技術士技能檢定「12500 建築物室內設計乙級」解題助理。
-請用繁體中文，用 2 至 4 句話說明此題正確答案的原因，引用相關法規或標準（如有）。直接解釋，勿重複題目。
+請用繁體中文，2至4句話說明此題正確答案的原因，引用相關法規或標準（如有）。直接解釋，勿重複題目。
 
 科目：${q.subject}（${q.section}）
 題目：${q.question}
@@ -974,29 +1035,22 @@ ${optsText}
 解釋為何選 ${q.answer.map(a=>alphas[a-1]).join('、')} 正確：`;
 
   try{
-    const resp=await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+geminiApiKey,
-      {method:'POST',headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({
-         contents:[{parts:[{text:prompt}]}],
-         generationConfig:{temperature:0.2,maxOutputTokens:400}
-       })}
-    );
-    if(!resp.ok){
-      const err=await resp.json();
-      throw new Error(err?.error?.message||'HTTP '+resp.status);
-    }
-    const data=await resp.json();
-    const text=data?.candidates?.[0]?.content?.parts?.[0]?.text||'（無法取得解析內容）';
+    const text=await tryGemini(prompt);
     aiExplanations[q.id]=text;
     localStorage.setItem('aiExplanations',JSON.stringify(aiExplanations));
     document.getElementById('aiResultText').textContent=text;
     document.getElementById('aiResult').classList.add('show');
     btn.style.display='none';
   }catch(err){
-    btn.disabled=false;
-    btn.innerHTML='🤖 查詢 AI 解析原因';
-    alert('查詢失敗：'+err.message+'\n\n請確認 API Key 是否正確，或稍後再試。');
+    if(err.retryAfter){
+      startAICountdown(err.retryAfter);
+    } else {
+      btn.disabled=false;
+      btn.innerHTML='🤖 查詢 AI 解析原因';
+      document.getElementById('aiResultText').textContent=
+        '⚠️ 查詢失敗：'+(err.message||'未知錯誤')+'\n\n請確認 API Key 是否正確。';
+      document.getElementById('aiResult').classList.add('show');
+    }
   }
 }
 
