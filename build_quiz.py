@@ -157,6 +157,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
 .btn-primary:disabled{background:var(--border);color:var(--text-sub);cursor:not-allowed}
 .btn-skip{background:var(--neutral-light);color:var(--text-sub);flex:.6}
 .btn-skip:hover{background:var(--border)}
+.btn-prev{background:var(--neutral-light);color:var(--text-sub);flex:.6}
+.btn-prev:hover{background:var(--border)}
+.btn-prev:disabled{opacity:.35;cursor:not-allowed}
 
 /* ===== RESULTS ===== */
 #results{background:var(--bg)}
@@ -456,6 +459,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
   </div>
 
   <div class="quiz-footer">
+    <button class="btn btn-prev" id="prevBtn" onclick="prevQuestion()" style="display:none">← 上一題</button>
     <button class="btn btn-skip" id="skipBtn" onclick="skipQuestion()">跳過</button>
     <button class="btn btn-primary" id="confirmBtn" onclick="confirmAnswer()" disabled>確認答案</button>
     <button class="btn btn-primary" id="nextBtn" onclick="nextQuestion()" style="display:none">下一題 →</button>
@@ -677,7 +681,7 @@ function renderQuestion(){
   document.getElementById('imageNotice').style.display=q.has_image?'':'none';
   const imgWrap=document.getElementById('questionImageWrap');
   const imgEl=document.getElementById('questionImage');
-  if(q.has_image){
+  if(q.has_image||q.has_q_image){
     imgEl.src='images/'+q.id+'.jpg';
     imgWrap.style.display='';
   } else {
@@ -711,7 +715,26 @@ function renderQuestion(){
   document.getElementById('nextBtn').style.display='none';
   document.getElementById('skipBtn').style.display='';
 
-  if(q.has_image){
+  // 上一題按鈕：第一題時隱藏
+  document.getElementById('prevBtn').style.display=currentIdx>0?'':'none';
+
+  // 已作答過（回頭看）→ 顯示結果，不可重答
+  const existingResult=results[currentIdx];
+  if(existingResult){
+    answered=true;
+    selectedAnswers=existingResult.selected||[];
+    if(existingResult.image){
+      q.options.forEach((_,i)=>{ if(q.answer.includes(i+1)) optList.children[i].classList.add('show-correct'); });
+      showAnalysis(q, null, 'image');
+    } else {
+      revealOptions(q, existingResult.correct);
+      if(existingResult.skipped) showAnalysis(q, false, 'skip');
+      else { showAnalysis(q, existingResult.correct, 'answer'); if(!existingResult.correct) showAIButton(q); }
+    }
+    document.getElementById('confirmBtn').style.display='none';
+    document.getElementById('skipBtn').style.display='none';
+    document.getElementById('nextBtn').style.display='';
+  } else if(q.has_image){
     answered=true;
     document.getElementById('confirmBtn').style.display='none';
     document.getElementById('skipBtn').style.display='none';
@@ -769,6 +792,9 @@ function showAnalysis(q, correct, type){
   if(type==='image'){
     box.className='analysis-box show info';
     verdict.innerHTML=`<span class="icon">📌</span><span>圖示題目</span>`;
+  } else if(type==='skip'){
+    box.className='analysis-box show wrong';
+    verdict.innerHTML=`<span class="icon">⏭</span><span>已跳過</span>`;
   } else if(correct){
     box.className='analysis-box show correct';
     verdict.innerHTML=`<span class="icon">✅</span><span>答對了！</span>`;
@@ -824,26 +850,15 @@ function skipQuestion(){
   document.getElementById('skipBtn').style.display='none';
   document.getElementById('nextBtn').style.display='';
 
-  // Always show analysis on skip
-  const q2=q;
-  const circles=['①','②','③','④'];
-  const alphas=['A','B','C','D'];
-  const box=document.getElementById('analysisBox');
-  box.className='analysis-box show wrong';
-  document.getElementById('analysisVerdict').innerHTML=`<span class="icon">⏭</span><span>已跳過</span>`;
-  let rows='';
-  q2.answer.forEach(a=>{
-    const optTxt=q2.has_image?'（圖示選項）':(q2.options[a-1]||'');
-    rows+=`<div class="ans-row">
-      <div class="ans-circle">${alphas[a-1]}</div>
-      <div class="ans-text">${circles[a-1]} ${optTxt}</div></div>`;
-  });
-  document.getElementById('analysisAnswer').innerHTML=`
-    <div class="label">正確答案</div>
-    <div class="ans-rows">${rows}</div>`;
+  revealOptions(q, false);
+  showAnalysis(q, false, 'skip');
+  showAIButton(q);
+}
 
-  showAIButton(q2);
-  revealOptions(q2, false);
+function prevQuestion(){
+  if(currentIdx<=0) return;
+  currentIdx--;
+  renderQuestion();
 }
 
 function nextQuestion(){
@@ -1199,6 +1214,27 @@ function importProgress(){
   };
   input.click();
 }
+
+// ===== SWIPE（手機左右滑動翻題）=====
+(function(){
+  let tx=0, ty=0;
+  document.getElementById('quiz').addEventListener('touchstart', e=>{
+    tx=e.touches[0].clientX; ty=e.touches[0].clientY;
+  },{passive:true});
+  document.getElementById('quiz').addEventListener('touchend', e=>{
+    const dx=e.changedTouches[0].clientX-tx;
+    const dy=e.changedTouches[0].clientY-ty;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){
+      if(dx<0){
+        // 左滑 = 下一題
+        if(document.getElementById('nextBtn').style.display!=='none') nextQuestion();
+      } else {
+        // 右滑 = 上一題
+        if(currentIdx>0) prevQuestion();
+      }
+    }
+  },{passive:true});
+})();
 
 initHome();
 </script>

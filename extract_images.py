@@ -45,8 +45,8 @@ def extract_page_image(pdf_path, page_idx, output_path, dpi=150):
 with open('questions.json', encoding='utf-8') as f:
     questions = json.load(f)
 
-has_image_qs = [q for q in questions if q.get('has_image')]
-print(f'共 {len(has_image_qs)} 道圖示題')
+has_image_qs = [q for q in questions if q.get('has_image') or q.get('has_q_image')]
+print(f'共 {len(has_image_qs)} 道圖示題（含題目含圖）')
 
 os.makedirs('images', exist_ok=True)
 
