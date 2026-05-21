@@ -424,7 +424,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
     <div class="q-num" id="qNum"></div>
     <div class="q-text" id="qText"></div>
     <div class="image-notice" id="imageNotice" style="display:none">
-      ⚠️ 此題含圖示符號，請對照原始 PDF 作答。正確答案已標示如下。
+      ⚠️ 此題選項含圖示符號，正確答案已標示如下。
+    </div>
+    <div id="questionImageWrap" style="display:none;margin:10px 0">
+      <img id="questionImage" src="" alt="題目圖示"
+        style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:zoom-in"
+        onclick="this.style.width=this.style.width==='100%'?'auto':'100%'">
     </div>
     <div class="options-list" id="optionsList"></div>
     <div class="analysis-box" id="analysisBox">
@@ -670,6 +675,15 @@ function renderQuestion(){
   if(q.is_multiple) tags+=`<span class="tag tag-multi">複選題 請選所有正確答案</span>`;
   document.getElementById('quizTags').innerHTML=tags;
   document.getElementById('imageNotice').style.display=q.has_image?'':'none';
+  const imgWrap=document.getElementById('questionImageWrap');
+  const imgEl=document.getElementById('questionImage');
+  if(q.has_image){
+    imgEl.src='images/'+q.id+'.jpg';
+    imgWrap.style.display='';
+  } else {
+    imgWrap.style.display='none';
+    imgEl.src='';
+  }
 
   const optList=document.getElementById('optionsList');
   optList.innerHTML='';
