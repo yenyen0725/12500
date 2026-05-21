@@ -385,30 +385,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
 
   <div class="card">
     <h3>🤖 AI 即時解析設定</h3>
-    <div style="font-size:.82rem;color:var(--text-sub);margin-bottom:10px">
-      答錯時一鍵查詢 AI 解題原因。推薦使用 Groq（免費・台灣可用・每天 14,400 次）
-    </div>
-    <div style="font-size:.8rem;font-weight:600;color:var(--text-sub);margin-bottom:4px">
-      ① Groq API Key
+    <div style="font-size:.82rem;color:var(--text-sub);margin-bottom:8px">
+      答錯時一鍵查詢 AI 解題原因（免費・台灣可用）—
       <a href="https://console.groq.com/keys" target="_blank"
-        style="color:#6366f1;font-weight:400;margin-left:6px">免費申請 →</a>
+        style="color:#6366f1;font-weight:600">免費申請 Groq Key →</a>
     </div>
     <div class="api-key-row">
       <input class="api-key-input" id="groqKeyInput" type="password"
-        placeholder="gsk_…（Groq API Key，免費・推薦）">
-      <button class="api-key-save-btn" onclick="saveApiKey()">儲存</button>
-    </div>
-    <div style="font-size:.8rem;font-weight:600;color:var(--text-sub);margin:10px 0 4px">
-      ② Gemini API Key（備用，台灣可能有限制）
-      <a href="https://aistudio.google.com/app/apikey" target="_blank"
-        style="color:var(--primary);font-weight:400;margin-left:6px">免費申請 →</a>
-    </div>
-    <div class="api-key-row">
-      <input class="api-key-input" id="geminiKeyInput" type="password"
-        placeholder="AIza…（Gemini API Key，備用）">
+        placeholder="gsk_…（貼上你的 Groq API Key）">
       <button class="api-key-save-btn" onclick="saveApiKey()">儲存</button>
     </div>
     <div class="api-key-status" id="apiKeyStatus"></div>
+    <input id="geminiKeyInput" type="hidden" value="">
   </div>
 
   <button class="start-btn" onclick="startQuiz()">▶ 開始測驗</button>
@@ -910,30 +898,27 @@ function confirmExit(){
 // ===== API KEY =====
 function saveApiKey(){
   const g=document.getElementById('groqKeyInput').value.trim();
-  const m=document.getElementById('geminiKeyInput').value.trim();
-  groqApiKey=g; geminiApiKey=m;
+  groqApiKey=g;
   if(g){ localStorage.setItem('groqApiKey',g); } else { localStorage.removeItem('groqApiKey'); }
-  if(m){ localStorage.setItem('geminiApiKey',m); } else { localStorage.removeItem('geminiApiKey'); }
   const status=document.getElementById('apiKeyStatus');
-  if(g||m){
+  if(g){
     status.className='api-key-status ok';
-    status.textContent='✅ 已儲存'+(g?' · Groq 優先':'')+(m?' · Gemini 備用':'')+'，答錯時可點「查詢 AI 解析原因」';
+    status.textContent='✅ 已儲存，答錯時可點「查詢 AI 解析原因」';
   } else {
     status.className='api-key-status empty';
-    status.textContent='（尚未設定，建議填入 Groq API Key）';
+    status.textContent='（尚未設定）';
   }
 }
 
 function initApiKeyUI(){
   const status=document.getElementById('apiKeyStatus');
   if(groqApiKey) document.getElementById('groqKeyInput').value=groqApiKey;
-  if(geminiApiKey) document.getElementById('geminiKeyInput').value=geminiApiKey;
-  if(groqApiKey||geminiApiKey){
+  if(groqApiKey){
     status.className='api-key-status ok';
-    status.textContent='✅ 已設定'+(groqApiKey?' · Groq 優先':'')+(geminiApiKey?' · Gemini 備用':'');
+    status.textContent='✅ 已設定，答錯時可使用 AI 解析';
   } else {
     status.className='api-key-status empty';
-    status.textContent='（尚未設定，建議填入 Groq API Key）';
+    status.textContent='（尚未設定，填入後可使用 AI 解析功能）';
   }
 }
 
