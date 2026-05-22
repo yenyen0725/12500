@@ -427,7 +427,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
     <div class="q-num" id="qNum"></div>
     <div class="q-text" id="qText"></div>
     <div class="image-notice" id="imageNotice" style="display:none">
-      ⚠️ 此題選項含圖示符號，正確答案已標示如下。
+      🔍 請對照上方圖示作答（圖中 ①②③④ 對應選項 A B C D）
     </div>
     <div id="questionImageWrap" style="display:none;margin:10px 0">
       <img id="questionImage" src="" alt="題目圖示"
@@ -700,13 +700,13 @@ function renderQuestion(){
   const circles=['①','②','③','④'];
   q.options.forEach((opt,i)=>{
     const item=document.createElement('div');
-    item.className='option-item'+(q.has_image?' disabled':'');
+    item.className='option-item';
     item.dataset.idx=i;
-    const txt=q.has_image?circles[i]+' 選項（含圖示）':(opt||'（空白）');
+    const txt=opt||(circles[i]+' （見上圖）');
     item.innerHTML=`<div class="option-inner">
       <div class="opt-label">${alphas[i]}</div>
       <div class="opt-text">${txt}</div></div>`;
-    if(!q.has_image) item.addEventListener('click',()=>toggleOption(i,q));
+    item.addEventListener('click',()=>toggleOption(i,q));
     optList.appendChild(item);
   });
 
@@ -740,14 +740,6 @@ function renderQuestion(){
     document.getElementById('confirmBtn').style.display='none';
     document.getElementById('skipBtn').style.display='none';
     document.getElementById('nextBtn').style.display='';
-  } else if(q.has_image){
-    answered=true;
-    document.getElementById('confirmBtn').style.display='none';
-    document.getElementById('skipBtn').style.display='none';
-    document.getElementById('nextBtn').style.display='';
-    q.options.forEach((_,i)=>{ if(q.answer.includes(i+1)) optList.children[i].classList.add('show-correct'); });
-    showAnalysis(q, null, 'image');
-    results.push({q,selected:[],correct:true,skipped:false,image:true});
   }
 }
 
@@ -812,7 +804,7 @@ function showAnalysis(q, correct, type){
   // Build correct answer rows
   let rows='';
   q.answer.forEach(a=>{
-    const optTxt=q.has_image?'（圖示選項）':(q.options[a-1]||'');
+    const optTxt=q.options[a-1]||'（見上圖）';
     rows+=`<div class="ans-row">
       <div class="ans-circle">${alphas[a-1]}</div>
       <div class="ans-text">${circles[a-1]} ${optTxt}</div></div>`;
