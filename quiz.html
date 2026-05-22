@@ -726,7 +726,8 @@ function renderQuestion(){
     } else {
       revealOptions(q, existingResult.correct);
       if(existingResult.skipped) showAnalysis(q, false, 'skip');
-      else { showAnalysis(q, existingResult.correct, 'answer'); if(!existingResult.correct) showAIButton(q); }
+      else showAnalysis(q, existingResult.correct, 'answer');
+      showAIButton(q);
     }
     document.getElementById('confirmBtn').style.display='none';
     document.getElementById('skipBtn').style.display='none';
@@ -772,7 +773,7 @@ function confirmAnswer(){
   revealOptions(q,correct);
   if(mode==='practice') showAnalysis(q,correct,'answer');
 
-  if(!correct) showAIButton(q);
+  showAIButton(q);
 
   document.getElementById('confirmBtn').style.display='none';
   document.getElementById('skipBtn').style.display='none';
@@ -960,13 +961,16 @@ function initApiKeyUI(){
 function showAIButton(q){
   const btn=document.getElementById('aiExplainBtn');
   const result=document.getElementById('aiResult');
-  result.classList.remove('show');
-  // If already cached, show immediately
   if(aiExplanations[q.id]){
+    // 有快取：顯示內容，並提供「重新查詢」按鈕（可覆蓋錯誤的解析）
     document.getElementById('aiResultText').textContent=aiExplanations[q.id];
     result.classList.add('show');
-    btn.style.display='none';
+    btn.disabled=false;
+    btn.innerHTML='🔄 重新查詢 AI 解析';
+    btn.style.display='';
   } else {
+    // 無快取：顯示查詢按鈕
+    result.classList.remove('show');
     btn.disabled=false;
     btn.innerHTML='🤖 查詢 AI 解析原因';
     btn.style.display='';
@@ -1045,7 +1049,10 @@ async function callGemini(prompt){
 async function askAI(){
   const q=quizQuestions[currentIdx];
   if(!q) return;
-  if(aiExplanations[q.id]){ showAIButton(q); return; }
+  // 每次點按都清掉舊快取並重新查詢（讓使用者可以修正錯誤解析）
+  delete aiExplanations[q.id];
+  localStorage.setItem('aiExplanations',JSON.stringify(aiExplanations));
+  document.getElementById('aiResult').classList.remove('show');
   if(!groqApiKey&&!geminiApiKey){
     alert('請先在首頁「🤖 AI 即時解析設定」填入 API Key。\n\n推薦免費申請 Groq Key：\nhttps://console.groq.com/keys');
     return;
