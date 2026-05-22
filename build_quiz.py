@@ -684,6 +684,11 @@ function renderQuestion(){
   if(q.has_image||q.has_q_image){
     imgEl.src='images/'+q.id+'.jpg';
     imgWrap.style.display='';
+    // has_q_image 圖示較小，保持原始大小居中；has_image 整頁圖拉滿寬
+    imgEl.style.width=q.has_q_image?'auto':'100%';
+    imgEl.style.maxWidth='100%';
+    imgEl.style.display='block';
+    imgEl.style.margin='0 auto';
   } else {
     imgWrap.style.display='none';
     imgEl.src='';
