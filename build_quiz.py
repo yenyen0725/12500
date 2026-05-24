@@ -283,6 +283,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
   font-weight:600;font-family:inherit;border:1.5px solid rgba(255,255,255,.3);
   background:rgba(255,255,255,.1);color:#fff;transition:all .15s;text-align:center}
 .sync-btn:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.55)}
+/* ===== CLOUD SYNC CARD ===== */
+.cloud-status{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border-radius:8px;font-size:.82rem;font-weight:600;margin-bottom:10px;
+  background:var(--neutral-light);color:var(--neutral);min-height:36px}
+.cloud-status.ok{background:var(--success-light);color:var(--success)}
+.cloud-status.err{background:var(--danger-light);color:var(--danger)}
+.cloud-status.syncing{background:#EFF6FF;color:#2563EB}
+.gas-url-row{display:flex;gap:8px;margin-bottom:8px}
+.gas-url-input{flex:1;padding:8px 10px;border:1.5px solid var(--border);
+  border-radius:8px;font-size:.8rem;font-family:inherit;background:#F8FAFC;
+  color:var(--text);min-width:0}
+.gas-url-input:focus{outline:none;border-color:var(--primary)}
+.cloud-btn-row{display:flex;gap:8px}
+.cloud-btn{flex:1;padding:8px;border-radius:8px;font-size:.82rem;font-weight:600;
+  cursor:pointer;border:1.5px solid var(--border);background:#fff;
+  color:var(--text);font-family:inherit;transition:all .15s}
+.cloud-btn:hover{background:var(--neutral-light)}
 
 @media(max-width:480px){
   .mode-cards{grid-template-columns:1fr}
@@ -408,6 +425,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
     </div>
     <div class="api-key-status" id="apiKeyStatus"></div>
     <input id="geminiKeyInput" type="hidden" value="">
+  </div>
+
+  <div class="card">
+    <h3>☁️ Google Drive 雲端同步</h3>
+    <div id="cloudStatus" class="cloud-status">⚙️ 請貼上 Apps Script 網址以啟用</div>
+    <div class="gas-url-row">
+      <input class="gas-url-input" id="gasUrlInput" type="text"
+        placeholder="https://script.google.com/macros/s/…/exec">
+      <button class="cloud-btn" onclick="saveGasUrl()"
+        style="flex:0;white-space:nowrap;padding:8px 14px;
+               background:var(--primary);color:#fff;border-color:var(--primary)">儲存</button>
+    </div>
+    <div class="cloud-btn-row">
+      <button class="cloud-btn" onclick="syncToCloud()">☁️ 立即上傳</button>
+      <button class="cloud-btn" onclick="loadFromCloud(true)">🔄 從雲端載入</button>
+    </div>
   </div>
 
   <button class="start-btn" onclick="startQuiz()">▶ 開始測驗</button>
@@ -547,6 +580,7 @@ function initHome(){
   updateStats();
   checkSavedSession();
   initApiKeyUI();
+  initCloudSync();
 
   // Notes textarea — debounced auto-save
   document.getElementById('notesArea').addEventListener('input',()=>{
@@ -1217,6 +1251,101 @@ function importProgress(){
     reader.readAsText(file,'utf-8');
   };
   input.click();
+}
+
+// ===== ☁️ GOOGLE DRIVE 雲端同步 =====
+const CLOUD_KEY = '12500progress';
+let gasUrl = localStorage.getItem('gasUrl') || '';
+let cloudSyncTimer = null;
+
+function saveGasUrl(){
+  const val = document.getElementById('gasUrlInput').value.trim();
+  gasUrl = val;
+  if(val){ localStorage.setItem('gasUrl', val); }
+  else { localStorage.removeItem('gasUrl'); }
+  if(val){
+    updateCloudStatus('✅ 已儲存，連線測試中…', 'syncing');
+    setTimeout(()=>loadFromCloud(false), 500);
+  } else {
+    updateCloudStatus('⚙️ 請貼上 Apps Script 網址以啟用', '');
+  }
+}
+
+function updateCloudStatus(msg, state){
+  const el = document.getElementById('cloudStatus');
+  if(!el) return;
+  el.textContent = msg;
+  el.className = 'cloud-status' + (state ? ' '+state : '');
+}
+
+async function syncToCloud(){
+  if(!gasUrl){ updateCloudStatus('⚙️ 請先填入 Apps Script 網址', ''); return; }
+  updateCloudStatus('⏫ 上傳中…', 'syncing');
+  try{
+    const resp = await fetch(gasUrl, {
+      method:'POST',
+      body: JSON.stringify({ key: CLOUD_KEY, data: { wrongBank, totalStats, questionNotes } }),
+      headers: {'Content-Type':'text/plain'}
+    });
+    const json = await resp.json();
+    const now = new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+    if(json.ok){ updateCloudStatus('✅ 已同步：'+now, 'ok'); }
+    else { updateCloudStatus('❌ 回應錯誤', 'err'); }
+  } catch(e){
+    updateCloudStatus('❌ 上傳失敗：'+e.message.slice(0,40), 'err');
+  }
+}
+
+async function loadFromCloud(manual){
+  if(!gasUrl){ if(manual) updateCloudStatus('⚙️ 請先填入 Apps Script 網址', ''); return; }
+  if(manual) updateCloudStatus('⏬ 載入中…', 'syncing');
+  try{
+    const resp = await fetch(gasUrl + '?key=' + CLOUD_KEY);
+    const data = await resp.json();
+    if(data && Object.keys(data).length > 0){
+      if(Array.isArray(data.wrongBank)){
+        wrongBank = data.wrongBank;
+        localStorage.setItem('wrongBank', JSON.stringify(wrongBank));
+      }
+      if(data.totalStats){
+        totalStats = data.totalStats;
+        localStorage.setItem('totalStats', JSON.stringify(totalStats));
+      }
+      if(data.questionNotes){
+        questionNotes = data.questionNotes;
+        localStorage.setItem('questionNotes', JSON.stringify(questionNotes));
+      }
+      updateStats();
+      const now = new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+      updateCloudStatus('✅ 已從雲端載入：'+now, 'ok');
+    } else {
+      updateCloudStatus(manual ? '⚠️ 雲端尚無資料' : '☁️ 就緒（雲端尚無資料）', manual ? '' : 'ok');
+    }
+  } catch(e){
+    updateCloudStatus(manual ? '❌ 載入失敗：'+e.message.slice(0,40) : '⚙️ 請貼上 Apps Script 網址以啟用', manual ? 'err' : '');
+  }
+}
+
+// 攔截 localStorage.setItem，對練習進度資料自動觸發雲端同步（2 秒防抖）
+(function(){
+  const SYNC_KEYS = new Set(['wrongBank','totalStats','questionNotes']);
+  const _orig = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function(key, val){
+    _orig(key, val);
+    if(SYNC_KEYS.has(key)){
+      clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = setTimeout(syncToCloud, 2000);
+    }
+  };
+})();
+
+function initCloudSync(){
+  const inp = document.getElementById('gasUrlInput');
+  if(inp && gasUrl) inp.value = gasUrl;
+  if(gasUrl){
+    updateCloudStatus('☁️ 連線中…', 'syncing');
+    setTimeout(()=>loadFromCloud(false), 800);
+  }
 }
 
 // ===== SWIPE（手機左右滑動翻題）=====
