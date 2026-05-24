@@ -11,14 +11,25 @@ PDF_MAP = {
     'N': '90009_energy.pdf',
 }
 
-def find_question_page(pdf_path, q_num):
-    """找出題號 q_num 在 PDF 的頁碼（0-indexed）"""
+def find_question_page(pdf_path, q_num, q_answer=None):
+    """找出題號 q_num 在 PDF 的頁碼（0-indexed）。
+    若提供 q_answer，則進一步確認該頁的答案也匹配（避免同號題在不同章節的衝突）。
+    """
+    combined = ''.join(str(a) for a in sorted(q_answer)) if q_answer else None
+
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages):
             text = page.extract_text() or ''
             text_flat = re.sub(r'\s+', ' ', text)
             if re.search(r'(?<!\d)' + str(q_num) + r'\s*[\.\．]\s*[\(（]\d', text_flat):
-                return i
+                if combined is None:
+                    return i
+                # 驗證答案格式也符合，如 "42. (1)" 或 "42. （1）"
+                if re.search(
+                    r'(?<!\d)' + str(q_num) + r'\s*[\.\．]\s*[\(（]' + combined + r'[\)）]',
+                    text_flat
+                ):
+                    return i
     return None
 
 
@@ -55,13 +66,47 @@ def _get_question_y_bounds(page, q_num):
     return q_start_y, q_end_y, next_q_y
 
 
+def _redact_answer(page, q_start_y, q_answer, page_w):
+    """在截圖前把答案 (N) 塗白，避免使用者看到答案。"""
+    if not q_answer:
+        return False
+
+    clip_rect = fitz.Rect(0, q_start_y - 5, page_w * 0.30, q_start_y + 18)
+    redacted = False
+
+    def _try_patterns(patterns):
+        nonlocal redacted
+        for pattern in patterns:
+            hits = page.search_for(pattern, clip=clip_rect)
+            for rect in hits:
+                page.add_redact_annot(
+                    fitz.Rect(rect.x0 - 2, rect.y0 - 2, rect.x1 + 2, rect.y1 + 2),
+                    fill=(1, 1, 1)
+                )
+                redacted = True
+
+    # 1. 嘗試合併格式：多選答案合成一個括號，如 (14) 或 (134)
+    combined = ''.join(str(a) for a in sorted(q_answer))
+    _try_patterns([f'({combined})', f'（{combined}）'])
+
+    # 2. 若合併沒找到，逐一嘗試個別答案
+    if not redacted:
+        for ans_num in q_answer:
+            _try_patterns([f'({ans_num})', f'（{ans_num}）'])
+
+    if redacted:
+        page.apply_redactions()
+    return redacted
+
+
 def extract_question_region(pdf_path, page_idx, q_num, output_path,
-                             dpi=200, mode='figure'):
+                             dpi=200, mode='figure', q_answer=None):
     """
     mode='figure' (has_q_image)：
         找題目和下一題之間的嵌入圖片，只截取那個圖示。
     mode='area'   (has_image)：
-        截取從本題開始到下一題前的整段（含題幹 + 選項圖）。
+        截取從本題開始到下一題前的整段（含題幹 + 選項圖），
+        並先塗白答案 (N)。
     """
     doc = fitz.open(pdf_path)
     page = doc[page_idx]
@@ -71,7 +116,10 @@ def extract_question_region(pdf_path, page_idx, q_num, output_path,
     q_start_y, q_end_y, next_q_y = _get_question_y_bounds(page, q_num)
 
     if mode == 'area':
-        # 截從題目開始到下一題前（含選項圖）
+        # 先把答案 (N) 塗白
+        ok = _redact_answer(page, q_start_y, q_answer, page_w)
+        print(f'  → [area] y={q_start_y:.0f}~{next_q_y:.0f}  答案遮蔽={ok}')
+
         pad = 6
         clip = fitz.Rect(
             page_w * 0.01,
@@ -79,7 +127,6 @@ def extract_question_region(pdf_path, page_idx, q_num, output_path,
             page_w * 0.99,
             min(page_h, next_q_y  - pad),
         )
-        print(f'  → [area] y={q_start_y:.0f}~{next_q_y:.0f}')
 
     else:  # mode == 'figure'
         # 找題目和下一題之間的嵌入圖片
@@ -145,7 +192,10 @@ for q in has_image_qs:
         skip += 1
         continue
 
-    page_idx = find_question_page(pdf_path, q_num)
+    page_idx = find_question_page(pdf_path, q_num, q_answer=q.get('answer'))
+    if page_idx is None:
+        # fallback: 不帶答案再找一次（避免答案格式不匹配時找不到）
+        page_idx = find_question_page(pdf_path, q_num)
     if page_idx is None:
         print(f'[找不到頁] {q["id"]} Q{q_num} in {pdf_path}')
         fail += 1
@@ -157,7 +207,9 @@ for q in has_image_qs:
         mode, dpi = 'area', 150
 
     print(f'[{mode}] {q["id"]} Q{q_num} p.{page_idx}')
-    size = extract_question_region(pdf_path, page_idx, q_num, output_path, dpi=dpi, mode=mode)
+    size = extract_question_region(pdf_path, page_idx, q_num, output_path,
+                                    dpi=dpi, mode=mode,
+                                    q_answer=q.get('answer') if mode == 'area' else None)
     print(f'[完成] {q["id"]} → {output_path} ({size//1024}KB)')
     ok += 1
 
