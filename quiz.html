@@ -421,18 +421,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Microsoft JhengHei",sans-seri
 
   <div class="card">
     <h3>☁️ Google Drive 雲端同步</h3>
-    <div id="cloudStatus" class="cloud-status">⚙️ 請貼上 Apps Script 網址以啟用</div>
-    <div class="gas-url-row">
-      <input class="gas-url-input" id="gasUrlInput" type="text"
-        placeholder="https://script.google.com/macros/s/…/exec">
-      <button class="cloud-btn" onclick="saveGasUrl()"
-        style="flex:0;white-space:nowrap;padding:8px 14px;
-               background:var(--primary);color:#fff;border-color:var(--primary)">儲存</button>
-    </div>
-    <div class="cloud-btn-row">
+    <div id="cloudStatus" class="cloud-status">☁️ 連線中…</div>
+    <div class="cloud-btn-row" style="margin-bottom:8px">
       <button class="cloud-btn" onclick="syncToCloud()">☁️ 立即上傳</button>
       <button class="cloud-btn" onclick="loadFromCloud(true)">🔄 從雲端載入</button>
     </div>
+    <details style="font-size:.78rem;color:var(--text-sub)">
+      <summary style="cursor:pointer">進階：自訂 Apps Script 網址</summary>
+      <div class="gas-url-row" style="margin-top:8px">
+        <input class="gas-url-input" id="gasUrlInput" type="text"
+          placeholder="留空則使用預設網址">
+        <button class="cloud-btn" onclick="saveGasUrl()"
+          style="flex:0;white-space:nowrap;padding:8px 14px;
+                 background:var(--primary);color:#fff;border-color:var(--primary)">儲存</button>
+      </div>
+    </details>
   </div>
 
   <button class="start-btn" onclick="startQuiz()">▶ 開始測驗</button>
@@ -1247,20 +1250,18 @@ function importProgress(){
 
 // ===== ☁️ GOOGLE DRIVE 雲端同步 =====
 const CLOUD_KEY = '12500progress';
-let gasUrl = localStorage.getItem('gasUrl') || '';
+// 預設網址寫死在程式碼，任何設備打開都自動連線；localStorage 可覆蓋（換 Script 時用）
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzuKGeFZ7EPDNFUb5RhBVs78-RdgUMQLKqPpAtHH-4S8y3ba-UbnMWDH1mkfphyEMDWEw/exec';
+let gasUrl = localStorage.getItem('gasUrl') || DEFAULT_GAS_URL;
 let cloudSyncTimer = null;
 
 function saveGasUrl(){
   const val = document.getElementById('gasUrlInput').value.trim();
-  gasUrl = val;
+  gasUrl = val || DEFAULT_GAS_URL;
   if(val){ localStorage.setItem('gasUrl', val); }
   else { localStorage.removeItem('gasUrl'); }
-  if(val){
-    updateCloudStatus('✅ 已儲存，連線測試中…', 'syncing');
-    setTimeout(()=>loadFromCloud(false), 500);
-  } else {
-    updateCloudStatus('⚙️ 請貼上 Apps Script 網址以啟用', '');
-  }
+  updateCloudStatus('✅ 已儲存，連線測試中…', 'syncing');
+  setTimeout(()=>loadFromCloud(false), 500);
 }
 
 function updateCloudStatus(msg, state){
